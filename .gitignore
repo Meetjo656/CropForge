@@ -217,5 +217,23 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Datasets
+# Datasets and Media
 datasets/
+RGB/
+*.mp4
+*.avi
+
+# Deep Learning Weights & Logs
+*.pt
+*.pth
+*.weights
+*.onnx
+*.engine
+runs/
+outputs/
+wandb/
+experiments/
+
+# OS generated files
+.DS_Store
+Thumbs.db

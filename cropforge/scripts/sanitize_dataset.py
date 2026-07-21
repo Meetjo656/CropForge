@@ -18,7 +18,7 @@ class DatasetSanitizer:
         self.dest_dir = Path(dest_dir)
         self.split_ratio = split_ratio
         self.seed = seed
-        self.class_to_id = {}
+        self.class_to_id = {}    
         self.id_to_class = {}
         random.seed(self.seed)
 
