@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python"/>
   <img src="https://img.shields.io/badge/PyTorch-2.6-red?style=for-the-badge&logo=pytorch"/>
   <img src="https://img.shields.io/badge/YOLOv8-Ultralytics-black?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/SAM2-Meta-green?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/SAM2.1-Meta-green?style=for-the-badge"/>
   <img src="https://img.shields.io/badge/FastAPI-Backend-teal?style=for-the-badge&logo=fastapi"/>
   <img src="https://img.shields.io/badge/Docker-Containerized-blue?style=for-the-badge&logo=docker"/>
 </p>
@@ -93,7 +93,7 @@ graph TD
 A[🌿 Plant Image] --> B[🧠 YOLOv8 Detection]
 B --> C[🎯 Disease Bounding Boxes]
 
-C --> D[🩺 SAM2 Segmentation]
+C --> D[🩺 SAM2.1 Segmentation]
 D --> E[📊 Severity Calculation]
 
 E --> F[🎨 Diffusion Forecasting]
@@ -267,7 +267,7 @@ CropForge extends Stable Diffusion using:
 * Treatment embeddings
 * Time conditioning
 * Environmental variables
-* SAM2 spatial masks
+* SAM2.1 spatial masks
 
 The system predicts biologically plausible future crop states.
 
@@ -281,7 +281,7 @@ The system predicts biologically plausible future crop states.
 CropForge combines:
 
 * YOLOv8
-* SAM2
+* SAM2.1
 * Diffusion Models
 * SSIM Verification
 * NLP Generation
@@ -317,7 +317,7 @@ using GPT-4o / Llama-3.
 * [x] Computer Vision Fundamentals
 * [x] PyTorch + CNNs
 * [x] YOLOv8 Integration
-* [ ] SAM2 Segmentation
+* [ ] SAM2.1 Segmentation
 * [ ] Diffusion Training
 * [ ] FastAPI Deployment
 * [ ] Dockerization
@@ -395,7 +395,7 @@ B.Tech CSE — PDEU Gandhinagar
 # 🙏 Acknowledgements
 
 * Ultralytics — YOLOv8
-* Meta AI — SAM2
+* Meta AI — SAM2.1
 * Hugging Face — Diffusers
 * PyTorch Team
 * OpenAI

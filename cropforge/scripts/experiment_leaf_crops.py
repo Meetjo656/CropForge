@@ -48,7 +48,7 @@ def get_best_prediction(res, yolo_model):
 
 def main():
     print("[INFO] Loading models...")
-    sam_model = SAM("sam2_t.pt")
+    sam_model = SAM("sam2.1_t.pt")
     yolo_model = YOLO(r"D:\Crop-Forge\runs\detect\fine_tuned_merged-3\weights\best.pt")
 
     plantdoc_test_dir = Path(r"D:\Crop-Forge\cropforge\datasets\raw\PlantDoc\test")
@@ -77,7 +77,7 @@ def main():
 
     class_stats = defaultdict(lambda: {"total": 0, "baseline_correct": 0, "crop_correct": 0})
 
-    print(f"[INFO] Evaluating {total} images through SAM2 Leaf Instance Pipeline...")
+    print(f"[INFO] Evaluating {total} images through SAM2.1 Leaf Instance Pipeline...")
 
     for i, (img_path, mapped_gt) in enumerate(selected):
         img_str = str(img_path)
@@ -96,7 +96,7 @@ def main():
             baseline_correct += 1
             class_stats[mapped_gt]["baseline_correct"] += 1
 
-        # --- B. SAM2 Crop Extraction & Inference ---
+        # --- B. SAM2.1 Crop Extraction & Inference ---
         res_sam = sam_model(img_str, verbose=False)[0]
         
         best_crop_pred = "Background/None"
@@ -165,7 +165,7 @@ def main():
             print(f"[INFO] Processed {i+1}/{total}...")
 
     print("\n" + "="*60)
-    print("--- SAM2 Leaf Instance Pipeline Results ---")
+    print("--- SAM2.1 Leaf Instance Pipeline Results ---")
     print(f"Total Images Evaluated: {total}")
     if total > 0:
         print(f"Baseline Accuracy: {baseline_correct / total * 100:.2f}%")

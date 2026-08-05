@@ -38,7 +38,7 @@ mapping = {
 
 def main():
     # 1. Load models
-    sam_model = SAM("sam2_t.pt")
+    sam_model = SAM("sam2.1_t.pt")
     yolo_model = YOLO(r"D:\Crop-Forge\runs\detect\fine_tuned_merged-3\weights\best.pt")
 
     plantdoc_test_dir = Path(r"D:\Crop-Forge\cropforge\datasets\raw\PlantDoc\test")
@@ -80,7 +80,7 @@ def main():
             if orig_pred == mapped_gt:
                 correct_original += 1
 
-        # --- B. SAM2 Masking ---
+        # --- B. SAM2.1 Masking ---
         res_sam = sam_model(img_str, verbose=False)[0]
         
         masked_img = np.zeros_like(img)
@@ -109,7 +109,7 @@ def main():
             print(f"[INFO] Processed {i+1}/{total}...")
 
     print("\n" + "="*50)
-    print("--- SAM2 Domain Shift Experiment Results ---")
+    print("--- SAM2.1 Domain Shift Experiment Results ---")
     print(f"Total Images Evaluated: {total}")
     if total > 0:
         print(f"Original Accuracy: {correct_original / total * 100:.2f}%")
