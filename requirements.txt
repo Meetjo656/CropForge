@@ -12,8 +12,10 @@ ultralytics>=8.0.0
 segment-anything>=1.0.0
 
 # Diffusion Models
-diffusers>=0.21.0
-transformers>=4.30.0
+diffusers>=0.31.0
+transformers>=4.45.0
+sentencepiece
+protobuf
 
 # Image Processing
 scikit-image>=0.21.0
