@@ -20,17 +20,17 @@ def main():
         model = YOLO('yolov8s.pt') 
         resume = False
 
-    # Run training
+    # Run training (speed optimized with RAM caching)
     model.train(
         data=r"D:\Crop-Forge\cropforge\datasets\processed\plantvillage_tight_labels\dataset.yaml",
         epochs=50,
-        batch=16,           # Increased batch size for massive speedup
-        workers=4,          # Increased workers for faster data loading
+        batch=32,           # Increased batch size for faster GPU throughput
+        workers=4,          # Workers for data loading
         imgsz=640,          # Full resolution
         name="cropforge_yolov8s_tight",
         project=r"D:\Crop-Forge\runs\detect",
         device=0,
-        cache=False,        
+        cache='ram',        # Cache dataset in RAM for maximum speed
         exist_ok=True,
         resume=resume,
         save_period=5       # Save a checkpoint every 5 epochs

@@ -1,0 +1,90 @@
+# Configuration file for Diffusion Dataset Generation Pipeline
+
+validation:
+  temperature_min: 0.0
+  temperature_max: 60.0
+  humidity_min: 0.0
+  humidity_max: 100.0
+  days_min: 0
+  allowed_severities:
+    - "Healthy"
+    - "Mild"
+    - "Moderate"
+    - "Severe"
+    - "Critical"
+  allowed_image_extensions:
+    - ".png"
+    - ".jpg"
+    - ".jpeg"
+    - ".webp"
+
+prompting:
+  default_camera_style: "macro botanical DSLR"
+  default_lighting: "natural outdoor"
+  
+  style_modifiers:
+    botanical: "botanical photography, ultra-detailed plant morphology, scientific accuracy"
+    macro: "macro photography, crisp surface detail, sharp micro focus on leaf structures"
+    pathology: "realistic plant pathology visualization, clear disease symptom demarcation"
+    scientific_realism: "scientific realism, authentic natural colors, high fidelity textures"
+    dslr: "shot on professional DSLR camera, shallow depth of field, 85mm macro lens"
+
+  negative_prompt:
+    - "illustration"
+    - "painting"
+    - "anime"
+    - "cartoon"
+    - "CGI"
+    - "blurry"
+    - "watermark"
+    - "text"
+    - "logo"
+    - "out of focus"
+    - "overexposed"
+    - "disfigured"
+
+conditioning:
+  categorical:
+    crop:
+      - "Tomato"
+      - "Potato"
+      - "Corn"
+      - "Apple"
+      - "Grape"
+      - "Pepper"
+      - "Strawberry"
+    disease:
+      - "Healthy"
+      - "Late Blight"
+      - "Early Blight"
+      - "Bacterial Spot"
+      - "Powdery Mildew"
+      - "Leaf Mold"
+      - "Yellow Leaf Curl Virus"
+    treatment:
+      - "None"
+      - "Copper Fungicide"
+      - "Mancozeb"
+      - "Chlorothalonil"
+      - "Neem Oil"
+      - "Bio-Fungicide"
+    severity:
+      - "Healthy"
+      - "Mild"
+      - "Moderate"
+      - "Severe"
+      - "Critical"
+  continuous:
+    days_after_treatment:
+      min: 0.0
+      max: 90.0
+    temperature:
+      min: 0.0
+      max: 60.0
+    humidity:
+      min: 0.0
+      max: 100.0
+
+storage:
+  metadata_dir: "cropforge/diffusion/outputs/metadata"
+  prompts_dir: "cropforge/diffusion/outputs/prompts"
