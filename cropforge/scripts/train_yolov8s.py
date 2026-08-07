@@ -24,7 +24,7 @@ def main():
     model.train(
         data=r"D:\Crop-Forge\cropforge\datasets\processed\plantvillage_tight_labels\dataset.yaml",
         epochs=50,
-        batch=32,           # Increased batch size for faster GPU throughput
+        batch=16,           # Batch size 16 to fit within GPU VRAM limits
         workers=4,          # Workers for data loading
         imgsz=640,          # Full resolution
         name="cropforge_yolov8s_tight",
