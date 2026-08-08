@@ -16,6 +16,9 @@ from cropforge.diffusion.configs import load_config
 from cropforge.diffusion.prompting import PromptBuilder, PromptTemplateEngine
 from cropforge.diffusion.conditions import ConditionEncoder
 from cropforge.diffusion.datasets import DatasetValidator, MetadataManager, DatasetBuilder, ValidationError
+from cropforge.diffusion.tests.test_model_loader import TestModelLoader
+from cropforge.diffusion.tests.test_sd35_generator import TestSD35Generator
+from cropforge.diffusion.tests.test_sd35_pipeline import TestSD35InferencePipeline
 
 
 class TestPrompting(unittest.TestCase):
