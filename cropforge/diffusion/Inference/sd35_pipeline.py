@@ -2,7 +2,7 @@
 SD3.5 Inference Pipeline and Comparison Generator for CropForge Diffusion.
 
 Orchestrates the end-to-end workflow:
-DatasetSample -> PromptBuilder -> Prompt -> SD35Generator -> Generated Image -> Save PNG -> Save Metadata
+DatasetSample -> PromptBuilder -> Prompt -> SD35Generator -> Generated Image -> Save PNG -> Save Metadata & Generation Log
 Generates standard comparison directory layout under outputs/comparison/sample_{sample_id}/.
 """
 
@@ -14,13 +14,14 @@ from typing import Any, Dict, List, Optional, Union
 from PIL import Image
 
 from cropforge.diffusion.Inference.sd35_generator import SD35Generator
+from cropforge.diffusion.datasets.builder import DatasetBuilder
 from cropforge.diffusion.datasets.metadata import MetadataManager
 from cropforge.diffusion.prompting import PromptBuilder
 from cropforge.diffusion.schemas.sample_schema import DatasetSample
 
 _logger = logging.getLogger(__name__)
 
-__all__ = ["SD35InferencePipeline"]
+__all__ = ["SD35InferencePipeline", "generate_dataset"]
 
 
 class SD35InferencePipeline:
@@ -28,8 +29,8 @@ class SD35InferencePipeline:
     End-to-end inference pipeline and comparison directory generator for SD 3.5.
 
     Transforms DatasetSample metadata into prompts, executes generation via SD35Generator,
-    saves the output image, positive/negative prompts, and sample metadata into
-    structured comparison folders (`outputs/comparison/sample_{id}/`).
+    saves the output image, positive/negative prompts, sample metadata, and generation log telemetry
+    into structured comparison folders (`outputs/comparison/sample_{id}/`).
     """
 
     def __init__(
@@ -62,7 +63,7 @@ class SD35InferencePipeline:
         """
         Run the inference pipeline for a single DatasetSample and write comparison output.
 
-        DatasetSample -> PromptBuilder -> Prompt -> SD35Generator -> Save PNG & Metadata
+        DatasetSample -> PromptBuilder -> Prompt -> SD35Generator -> Save PNG & Metadata & Generation Log
 
         Args:
             sample: DatasetSample object or dictionary.
@@ -72,7 +73,7 @@ class SD35InferencePipeline:
 
         Returns:
             Dictionary containing paths to all generated comparison artifacts:
-            {'sample_dir', 'generated_png', 'prompt_txt', 'metadata_json', 'ground_truth_png'}
+            {'sample_dir', 'generated_png', 'prompt_txt', 'metadata_json', 'generation_log_json', 'ground_truth_png'}
         """
         if isinstance(sample, dict):
             sample_obj = DatasetSample(**sample)
@@ -116,7 +117,14 @@ class SD35InferencePipeline:
         MetadataManager.save_metadata(sample_obj, metadata_json_path)
         _logger.info("Saved metadata JSON to '%s'", metadata_json_path)
 
-        # 7. (Optional) Copy Ground Truth image if available
+        # 7. Save Generation Telemetry Log JSON (generation_log.json - Task 5)
+        generation_log_json_path = sample_dir / "generation_log.json"
+        log_data = getattr(self.generator, "last_generation_log", {})
+        with open(generation_log_json_path, "w", encoding="utf-8") as f:
+            json.dump(log_data, f, indent=4, ensure_ascii=False)
+        _logger.info("Saved generation telemetry log to '%s'", generation_log_json_path)
+
+        # 8. (Optional) Copy Ground Truth image if available
         ground_truth_path: Optional[Path] = None
         if copy_ground_truth:
             gt_source = Path(sample_obj.target_image)
@@ -138,6 +146,7 @@ class SD35InferencePipeline:
             "generated_png": str(generated_png_path.resolve()),
             "prompt_txt": str(prompt_txt_path.resolve()),
             "metadata_json": str(metadata_json_path.resolve()),
+            "generation_log_json": str(generation_log_json_path.resolve()),
             "ground_truth_png": str(ground_truth_path.resolve()) if ground_truth_path else None,
         }
 
@@ -162,3 +171,59 @@ class SD35InferencePipeline:
             res = self.run_sample(sample=sample, **kwargs)
             results.append(res)
         return results
+
+    def generate_dataset(
+        self,
+        num_samples: int = 100,
+        output_base_dir: Optional[Union[str, Path]] = None,
+        seed: int = 42,
+        **kwargs: Any,
+    ) -> List[Dict[str, Any]]:
+        """
+        Task 7: Generate a complete dataset batch of synthetic samples end-to-end.
+
+        DatasetBuilder -> 100 Samples -> Prompt Builder -> SD35 -> Generated Images -> Metadata & Logs -> Finished
+
+        Args:
+            num_samples: Number of samples to procedurally generate (default: 100).
+            output_base_dir: Custom base output directory.
+            seed: Seed for procedural DatasetSample generation.
+            **kwargs: Generation options passed to pipeline execution.
+
+        Returns:
+            List of result dictionaries for all generated samples.
+        """
+        _logger.info("Starting generate_dataset for %d samples...", num_samples)
+        builder = DatasetBuilder(config=self.prompt_builder.config)
+        samples = builder.generate_sample_batch(count=num_samples, seed=seed)
+
+        if output_base_dir is not None:
+            self.output_base_dir = Path(output_base_dir)
+
+        results = self.run_batch(samples=samples, **kwargs)
+        _logger.info("Finished batch generation of %d dataset samples.", len(results))
+        return results
+
+
+def generate_dataset(
+    num_samples: int = 100,
+    output_dir: Optional[Union[str, Path]] = None,
+    pipeline: Optional[SD35InferencePipeline] = None,
+    seed: int = 42,
+    **kwargs: Any,
+) -> List[Dict[str, Any]]:
+    """
+    Convenience function for Task 7 batch generation.
+
+    Args:
+        num_samples: Number of samples to generate (default: 100).
+        output_dir: Base comparison output directory.
+        pipeline: Custom SD35InferencePipeline instance.
+        seed: Seed for random procedural sample generation.
+        **kwargs: Extra arguments passed to pipeline generation.
+
+    Returns:
+        List of generated sample results.
+    """
+    active_pipeline = pipeline if pipeline is not None else SD35InferencePipeline()
+    return active_pipeline.generate_dataset(num_samples=num_samples, output_base_dir=output_dir, seed=seed, **kwargs)

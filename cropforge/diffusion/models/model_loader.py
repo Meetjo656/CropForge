@@ -14,6 +14,8 @@ from typing import Any as _Any, Dict as _Dict, Optional as _Optional, Tuple as _
 import logging as _logging
 import torch as _torch
 
+from cropforge.diffusion.configs import load_config as _load_config
+
 _logger = _logging.getLogger(__name__)
 
 # Private global cache mapping cache keys -> pipeline instances
@@ -23,7 +25,7 @@ __all__ = ["load_model"]
 
 
 def load_model(
-    model_id: str = "stabilityai/stable-diffusion-3.5-large",
+    model_id: _Optional[str] = None,
     lora_path: _Optional[_Union[str, _Path]] = None,
     device: _Optional[_Union[str, _torch.device]] = None,
     torch_dtype: _Optional[_torch.dtype] = None,
@@ -36,7 +38,7 @@ def load_model(
     Only public method of this module. Everything else stays internal.
 
     Args:
-        model_id: HuggingFace model repo ID or local path for SD 3.5.
+        model_id: HuggingFace model repo ID or local path for SD 3.5 (defaults to config).
         lora_path: Optional path to LoRA weights (file or directory) for future/custom adapter loading.
         device: Target compute device ('cuda', 'cpu', 'mps', or auto-detected if None).
         torch_dtype: Torch precision dtype (e.g., torch.bfloat16, torch.float16, torch.float32).
@@ -46,6 +48,13 @@ def load_model(
     Returns:
         The loaded diffusion pipeline ready for inference.
     """
+    if model_id is None:
+        try:
+            cfg = _load_config()
+            model_id = cfg.get("inference", {}).get("model", "stabilityai/stable-diffusion-3.5-medium")
+        except Exception:
+            model_id = "stabilityai/stable-diffusion-3.5-medium"
+
     resolved_device = _resolve_device(device)
     resolved_dtype = _resolve_dtype(torch_dtype, resolved_device)
     lora_key = str(_Path(lora_path).resolve()) if lora_path is not None else None

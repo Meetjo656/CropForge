@@ -88,3 +88,12 @@ conditioning:
 storage:
   metadata_dir: "cropforge/diffusion/outputs/metadata"
   prompts_dir: "cropforge/diffusion/outputs/prompts"
+
+inference:
+  model: "stabilityai/stable-diffusion-3.5-medium"
+  steps: 30
+  guidance_scale: 7.5
+  height: 1024
+  width: 1024
+  seed: 42
+  lora_path: null
