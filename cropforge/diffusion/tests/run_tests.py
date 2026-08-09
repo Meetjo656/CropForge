@@ -20,6 +20,7 @@ from cropforge.diffusion.tests.test_model_loader import TestModelLoader
 from cropforge.diffusion.tests.test_sd35_generator import TestSD35Generator
 from cropforge.diffusion.tests.test_sd35_pipeline import TestSD35InferencePipeline
 from cropforge.diffusion.tests.test_logging_and_config import TestLoggingAndConfig
+from cropforge.diffusion.tests.test_lora_training import TestLoRATrainingArchitecture
 
 
 class TestPrompting(unittest.TestCase):

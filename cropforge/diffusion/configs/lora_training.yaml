@@ -1,0 +1,53 @@
+# SD3.5 LoRA Training Configuration for CropForge
+model:
+  pretrained_model_name_or_path: "stabilityai/stable-diffusion-3.5-medium"
+
+training:
+  output_dir: "outputs/diffusion/lora_train"
+  resolution: 1024
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  max_train_steps: 1000
+  mixed_precision: "fp16"
+  gradient_checkpointing: true
+  seed: 42
+
+optimizer:
+  name: "adamw"
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  epsilon: 1e-8
+
+scheduler:
+  name: "constant"
+  warmup_steps: 100
+
+lora:
+  rank: 16
+  alpha: 16
+  dropout: 0.0
+  target_modules:
+    - "to_q"
+    - "to_k"
+    - "to_v"
+    - "to_out.0"
+    - "add_q_proj"
+    - "add_k_proj"
+    - "add_v_proj"
+    - "to_add_out"
+
+checkpointing:
+  save_every_n_steps: 500
+  max_checkpoints: 3
+
+validation:
+  enabled: true
+  every_n_steps: 500
+  num_images: 1
+  seed: 42
+  prompts:
+    - "realistic photograph of a tomato leaf affected by early blight"
+    - "realistic photograph of a tomato leaf affected by late blight"
+    - "realistic photograph of a healthy tomato leaf"
+    - "realistic photograph of a potato leaf affected by early blight"
