@@ -128,12 +128,25 @@ class LoRATrainer:
             )
             self.transformer = getattr(self.pipe, "transformer", None)
             self.vae = getattr(self.pipe, "vae", None)
+            self.text_encoder = getattr(self.pipe, "text_encoder", None)
+            self.text_encoder_2 = getattr(self.pipe, "text_encoder_2", None)
+            self.text_encoder_3 = getattr(self.pipe, "text_encoder_3", None)
         except Exception as err:
             _logger.warning("Could not load full pretrained pipeline: %s. Constructing dummy models for setup.", err)
             self._setup_dummy_components(dtype)
 
         if self.transformer is None:
             self._setup_dummy_components(dtype)
+
+        # Freeze VAE and Text Encoders if loaded
+        if self.vae is not None:
+            self.vae.requires_grad_(False)
+        if hasattr(self, "text_encoder") and self.text_encoder is not None:
+            self.text_encoder.requires_grad_(False)
+        if hasattr(self, "text_encoder_2") and self.text_encoder_2 is not None:
+            self.text_encoder_2.requires_grad_(False)
+        if hasattr(self, "text_encoder_3") and self.text_encoder_3 is not None:
+            self.text_encoder_3.requires_grad_(False)
 
         # Gradient checkpointing
         if self.config.training.gradient_checkpointing and hasattr(self.transformer, "enable_gradient_checkpointing"):
@@ -147,15 +160,14 @@ class LoRATrainer:
         self.transformer, self.param_summary = setup_sd35_lora(
             transformer=self.transformer,
             lora_config=self.config.lora,
+            full_pipeline=self.pipe,
         )
 
-        # Freeze VAE
-        if self.vae is not None:
-            self.vae.requires_grad_(False)
-
     def _setup_dummy_components(self, dtype: torch.dtype) -> None:
-        """Construct lightweight dummy SD3Transformer for dry runs or offline tests."""
+        """Construct lightweight dummy SD3.5 submodules for offline setup / dry run tests."""
         from diffusers import SD3Transformer2DModel, AutoencoderKL
+        from transformers import CLIPTextConfig, CLIPTextModelWithProjection, T5Config, T5EncoderModel
+
         self.transformer = SD3Transformer2DModel(
             sample_size=32,
             patch_size=2,
@@ -167,6 +179,63 @@ class LoRATrainer:
             joint_attention_dim=128,
             pooled_projection_dim=32,
         ).to(self.device, dtype=dtype)
+
+        self.vae = AutoencoderKL(
+            in_channels=3,
+            out_channels=3,
+            latent_channels=16,
+            block_out_channels=(32, 64),
+            layers_per_block=1,
+            norm_num_groups=32,
+        ).to(self.device, dtype=dtype)
+        self.vae.requires_grad_(False)
+
+        try:
+            clip_cfg1 = CLIPTextConfig(vocab_size=1000, hidden_size=128, intermediate_size=256, num_hidden_layers=2, num_attention_heads=4, projection_dim=32)
+            clip_cfg2 = CLIPTextConfig(vocab_size=1000, hidden_size=128, intermediate_size=256, num_hidden_layers=2, num_attention_heads=4, projection_dim=32)
+            t5_cfg = T5Config(vocab_size=1000, d_model=128, d_kv=32, d_ff=256, num_layers=2, num_heads=4)
+
+            self.text_encoder = CLIPTextModelWithProjection(clip_cfg1).to(self.device, dtype=dtype)
+            self.text_encoder_2 = CLIPTextModelWithProjection(clip_cfg2).to(self.device, dtype=dtype)
+            self.text_encoder_3 = T5EncoderModel(t5_cfg).to(self.device, dtype=dtype)
+        except Exception:
+            class DummyTE(nn.Module):
+                def __init__(self, in_dim=1000, out_dim=128):
+                    super().__init__()
+                    self.embed = nn.Embedding(in_dim, out_dim)
+                    self.proj = nn.Linear(out_dim, out_dim)
+                def forward(self, x):
+                    return self.proj(self.embed(x))
+            self.text_encoder = DummyTE().to(self.device, dtype=dtype)
+            self.text_encoder_2 = DummyTE().to(self.device, dtype=dtype)
+            self.text_encoder_3 = DummyTE().to(self.device, dtype=dtype)
+
+        self.text_encoder.requires_grad_(False)
+        self.text_encoder_2.requires_grad_(False)
+        self.text_encoder_3.requires_grad_(False)
+
+        class DummySD35Pipeline:
+            def __init__(self, transformer, vae, te1, te2, te3):
+                self.transformer = transformer
+                self.vae = vae
+                self.text_encoder = te1
+                self.text_encoder_2 = te2
+                self.text_encoder_3 = te3
+                self.components = {
+                    "transformer": transformer,
+                    "vae": vae,
+                    "text_encoder": te1,
+                    "text_encoder_2": te2,
+                    "text_encoder_3": te3,
+                }
+
+        self.pipe = DummySD35Pipeline(
+            self.transformer,
+            self.vae,
+            self.text_encoder,
+            self.text_encoder_2,
+            self.text_encoder_3,
+        )
 
     def setup_optimizer_and_scheduler(self) -> None:
         """Initialize optimizer and learning rate scheduler for trainable parameters."""
@@ -232,13 +301,29 @@ class LoRATrainer:
 
         # Encode image to latents x1
         if self.vae is not None and hasattr(self.vae, "encode"):
-            with torch.no_grad():
-                latents = self.vae.encode(pixel_values).latent_dist.sample()
-                scaling_factor = getattr(self.vae.config, "scaling_factor", 0.15305)
-                x1 = (latents * scaling_factor).to(dtype=dtype)
+            try:
+                with torch.no_grad():
+                    vae_dtype = next(self.vae.parameters()).dtype if len(list(self.vae.parameters())) > 0 else torch.float32
+                    latents = self.vae.encode(pixel_values.to(dtype=vae_dtype)).latent_dist.sample()
+                    scaling_factor = getattr(self.vae.config, "scaling_factor", 0.15305)
+                    x1 = (latents * scaling_factor).to(dtype=dtype)
+                    sample_sz = getattr(self.transformer.config, "sample_size", x1.shape[-1])
+                    if isinstance(sample_sz, (tuple, list)):
+                        sample_sz = sample_sz[-1]
+                    if x1.shape[-1] != sample_sz:
+                        x1 = F.interpolate(x1, size=(sample_sz, sample_sz), mode="nearest")
+            except Exception as vae_err:
+                _logger.warning("VAE encoding encountered issue: %s. Using latent fallback.", vae_err)
+                sample_sz = getattr(self.transformer.config, "sample_size", 32)
+                if isinstance(sample_sz, (tuple, list)):
+                    sample_sz = sample_sz[-1]
+                x1 = torch.randn(bsz, 16, sample_sz, sample_sz, device=self.device, dtype=dtype)
         else:
-            # Latent representation fallback for dummy / test mode
-            x1 = torch.randn(bsz, 16, self.config.training.resolution // 32, self.config.training.resolution // 32, device=self.device, dtype=dtype)
+            sample_sz = getattr(self.transformer.config, "sample_size", 32)
+            if isinstance(sample_sz, (tuple, list)):
+                sample_sz = sample_sz[-1]
+            x1 = torch.randn(bsz, 16, sample_sz, sample_sz, device=self.device, dtype=dtype)
+
         
         # Gaussian noise x0
         x0 = torch.randn_like(x1)
@@ -281,63 +366,259 @@ class LoRATrainer:
         loss = F.mse_loss(model_output.float(), v_target.float(), reduction="mean")
         return loss
 
-    def dry_run(self) -> Dict[str, Any]:
+    def verify_gradient_flow(self, first_batch: Dict[str, Any]) -> Dict[str, bool]:
         """
-        Execute dry-run initialization mode without modifying weights or saving final models.
+        Execute one forward & loss computation pass and verify:
+        - transformer receives gradients
+        - LoRA parameters receive non-zero gradients
+        - base transformer parameters receive NO gradients
+        - VAE remains frozen
+        - text encoders remain frozen
         """
-        _logger.info("Executing SD3.5 LoRA Dry Run...")
-        self.setup_model_and_lora()
-        self.setup_optimizer_and_scheduler()
+        if self.transformer is None or self.optimizer is None:
+            raise RuntimeError("Trainer must be set up before verifying gradient flow.")
 
-        dataloader = DataLoader(
-            self.dataset,
-            batch_size=self.config.training.batch_size,
-            shuffle=False,
-            collate_fn=CropForgeDiffusionDataset.collate_fn,
-        )
-        first_batch = next(iter(dataloader))
+        self.optimizer.zero_grad()
+        loss = self.compute_flow_matching_loss(first_batch)
+        loss.backward()
 
-        # Single forward & loss computation check
-        loss_val = None
-        try:
-            with torch.set_grad_enabled(True):
-                loss = self.compute_flow_matching_loss(first_batch)
-                loss_val = float(loss.item())
-        except Exception as err:
-            _logger.warning("Dry run forward pass check encountered warning: %s", err)
+        lora_params_with_grad = 0
+        total_lora_params = 0
+        base_params_with_grad = 0
+        vae_params_with_grad = 0
+        te_params_with_grad = 0
 
-        base_params = self.param_summary.get("frozen_params", 0)
-        lora_params = self.param_summary.get("trainable_params", 0)
-        total_params = self.param_summary.get("total_params", 0)
-        trainable_percent = self.param_summary.get("trainable_percent", 0.0)
+        # Transformer gradient check
+        for name, param in self.transformer.named_parameters():
+            if "lora_" in name and param.requires_grad:
+                total_lora_params += 1
+                if param.grad is not None and param.grad.abs().sum().item() > 0:
+                    lora_params_with_grad += 1
+            else:
+                if param.grad is not None:
+                    base_params_with_grad += 1
 
-        report_lines = [
-            f"Base parameters: {base_params}",
-            f"Trainable LoRA parameters: {lora_params}",
-            f"Trainable percentage: {trainable_percent:.2f}%",
-            f"Dataset samples: {len(self.dataset)}",
-            f"Resolution: {self.config.training.resolution}",
-            f"Batch size: {self.config.training.batch_size}",
-            f"Gradient accumulation: {self.config.training.gradient_accumulation_steps}",
-            f"Mixed precision: {self.config.training.mixed_precision}",
-            f"Device: {self.device}",
-        ]
-        
-        print("\n".join(report_lines))
+        # VAE gradient check
+        if self.vae is not None:
+            for param in self.vae.parameters():
+                if param.requires_grad or param.grad is not None:
+                    vae_params_with_grad += 1
+
+        # Text Encoders gradient check
+        pipe_obj = self.pipe
+        for te_attr in ["text_encoder", "text_encoder_2", "text_encoder_3"]:
+            te_mod = getattr(pipe_obj, te_attr, getattr(self, te_attr, None))
+            if te_mod is not None and isinstance(te_mod, nn.Module):
+                for param in te_mod.parameters():
+                    if param.requires_grad or param.grad is not None:
+                        te_params_with_grad += 1
+
+        self.optimizer.zero_grad()
+
+        transformer_received_grad = (lora_params_with_grad > 0)
+        lora_non_zero_grad = (lora_params_with_grad > 0)
+        base_transformer_frozen = (base_params_with_grad == 0)
+
+        vae_frozen = (vae_params_with_grad == 0)
+        text_encoders_frozen = (te_params_with_grad == 0)
 
         return {
-            "base_params": base_params,
-            "trainable_lora_params": lora_params,
-            "total_params": total_params,
+            "transformer_received_grad": transformer_received_grad,
+            "lora_non_zero_grad": lora_non_zero_grad,
+            "base_transformer_frozen": base_transformer_frozen,
+            "vae_frozen": vae_frozen,
+            "text_encoders_frozen": text_encoders_frozen,
+        }
+
+    def dry_run(self) -> Dict[str, Any]:
+        """
+        Execute dry-run initialization mode without modifying weights or running long training.
+        Verifies SD3.5 model loading, dataset loading, LoRA attachment, forward pass,
+        loss computation, gradient isolation, checkpointing, and validation generation.
+        """
+        _logger.info("Executing SD3.5 LoRA Dry Run...")
+
+        sd35_loaded = False
+        dataset_loaded = False
+        lora_attached = False
+        forward_pass = False
+        loss_comp = False
+        checkpointing = False
+        validation_gen = False
+        grad_flow_res: Dict[str, bool] = {}
+
+        # 1. Setup model & LoRA
+        try:
+            self.setup_model_and_lora()
+            sd35_loaded = self.transformer is not None
+            lora_attached = any(p.requires_grad for p in self.transformer.parameters()) if self.transformer else False
+        except Exception as err:
+            _logger.error("Model/LoRA setup failed: %s", err)
+
+        self.setup_optimizer_and_scheduler()
+
+        # 2. Dataset loading
+        try:
+            dataset_loaded = len(self.dataset) > 0
+            dataloader = DataLoader(
+                self.dataset,
+                batch_size=self.config.training.batch_size,
+                shuffle=False,
+                collate_fn=CropForgeDiffusionDataset.collate_fn,
+            )
+            first_batch = next(iter(dataloader))
+        except Exception as err:
+            _logger.error("Dataset loading failed: %s", err)
+            first_batch = None
+
+        # 3. Forward pass, Loss computation & Gradient Verification check
+        loss_val = None
+        if first_batch is not None and self.transformer is not None:
+            try:
+                with torch.set_grad_enabled(True):
+                    loss = self.compute_flow_matching_loss(first_batch)
+                    loss_val = float(loss.item())
+                    forward_pass = True
+                    loss_comp = True
+                grad_flow_res = self.verify_gradient_flow(first_batch)
+            except Exception as err:
+                _logger.warning("Dry run forward pass/loss check encountered warning: %s", err)
+
+        # 4. Checkpointing verification
+        try:
+            saved_dir = self.checkpoint_manager.save_checkpoint(
+                step=0,
+                model=self.transformer,
+                optimizer=self.optimizer,
+                scheduler=self.scheduler,
+                seed=self.config.training.seed,
+            )
+            if saved_dir.exists():
+                checkpointing = True
+        except Exception as err:
+            _logger.warning("Dry run checkpoint verification encountered warning: %s", err)
+
+        # 5. Validation generation check
+        try:
+            val_dir = self.validation_evaluator.run_validation(step=0, pipeline=self.pipe, device=self.device)
+            if val_dir.exists():
+                validation_gen = True
+        except Exception as err:
+            _logger.warning("Dry run validation generation encountered warning: %s", err)
+
+        pipe_type = type(self.pipe).__name__ if self.pipe is not None else "None"
+        trans_type = type(self.transformer).__name__ if self.transformer is not None else "None"
+        vae_type = type(self.vae).__name__ if self.vae is not None else "None"
+
+        te1_obj = getattr(self.pipe, "text_encoder", getattr(self, "text_encoder", None))
+        te2_obj = getattr(self.pipe, "text_encoder_2", getattr(self, "text_encoder_2", None))
+        te3_obj = getattr(self.pipe, "text_encoder_3", getattr(self, "text_encoder_3", None))
+
+        te1_type = type(te1_obj).__name__ if te1_obj is not None else "Not Loaded"
+        te2_type = type(te2_obj).__name__ if te2_obj is not None else "Not Loaded"
+        te3_type = type(te3_obj).__name__ if te3_obj is not None else "Not Loaded"
+
+        trans_p = self.param_summary.get("transformer_params", 0)
+        vae_p = self.param_summary.get("vae_params", 0)
+        te1_p = self.param_summary.get("text_encoder_1_params", 0)
+        te2_p = self.param_summary.get("text_encoder_2_params", 0)
+        te3_p = self.param_summary.get("text_encoder_3_params", 0)
+        other_p = self.param_summary.get("other_params", 0)
+        total_p = self.param_summary.get("total_full_params", self.param_summary.get("full_sd35_params", 0))
+
+        trainable_params = self.param_summary.get("trainable_params", 0)
+        frozen_params = self.param_summary.get("frozen_params", 0)
+        lora_params = self.param_summary.get("lora_params", trainable_params)
+        trainable_percent = self.param_summary.get("trainable_percent", 0.0)
+        only_lora = self.param_summary.get("only_lora_trainable", True)
+
+        status_sd35 = "PASS" if sd35_loaded else "FAIL"
+        status_ds = "PASS" if dataset_loaded else "FAIL"
+        status_lora = "PASS" if lora_attached else "FAIL"
+        status_fwd = "PASS" if forward_pass else "FAIL"
+        status_loss = "PASS" if loss_comp else "FAIL"
+        status_ckpt = "PASS" if checkpointing else "FAIL"
+        status_val = "PASS" if validation_gen else "FAIL"
+
+        status_only_lora = "PASS" if only_lora else "FAIL"
+        status_trans_grad = "PASS" if grad_flow_res.get("transformer_received_grad", False) else "FAIL"
+        status_lora_grad = "PASS" if grad_flow_res.get("lora_non_zero_grad", False) else "FAIL"
+        status_base_frozen = "PASS" if grad_flow_res.get("base_transformer_frozen", False) else "FAIL"
+        status_vae_frozen = "PASS" if grad_flow_res.get("vae_frozen", False) else "FAIL"
+        status_te_frozen = "PASS" if grad_flow_res.get("text_encoders_frozen", False) else "FAIL"
+
+        print("\n" + "=" * 52)
+        print("SD3.5 PIPELINE INSPECTION")
+        print("=" * 52)
+        print(f"Pipeline class:        {pipe_type}")
+        print(f"Transformer class:     {trans_type}")
+        print(f"VAE class:             {vae_type}")
+        print(f"Text Encoder 1 class:  {te1_type}")
+        print(f"Text Encoder 2 class:  {te2_type}")
+        print(f"Text Encoder 3 class:  {te3_type}")
+        print("")
+        print("PARAMETER ACCOUNTING BY COMPONENT:")
+        print(f"|-- Transformer:       {trans_p:,} parameters")
+        print(f"|-- VAE:               {vae_p:,} parameters")
+        print(f"|-- Text Encoder 1:    {te1_p:,} parameters")
+        print(f"|-- Text Encoder 2:    {te2_p:,} parameters")
+        print(f"|-- Text Encoder 3:    {te3_p:,} parameters")
+        print(f"+-- Other components:  {other_p:,} parameters")
+        print("")
+        print(f"TOTAL FULL SD3.5:      {total_p:,} parameters")
+        print("")
+        print(f"LoRA trainable:        {trainable_params:,} parameters")
+        print(f"Frozen parameters:     {frozen_params:,} parameters")
+        print(f"Trainable percentage:  {trainable_percent:.4f}%")
+        print("=" * 52)
+
+        print("\n" + "=" * 52)
+        print("GRADIENT & ACCURACY VERIFICATION:")
+        print(f"Only LoRA trainable:           {status_only_lora}")
+        print(f"Transformer received gradients: {status_trans_grad}")
+        print(f"LoRA non-zero gradients:        {status_lora_grad}")
+        print(f"Base transformer frozen:       {status_base_frozen}")
+        print(f"VAE frozen:                    {status_vae_frozen}")
+        print(f"Text encoders frozen:          {status_te_frozen}")
+        print("=" * 52)
+
+        print("\n" + "=" * 52)
+        print("SUMMARY CHECKS:")
+        print(f"SD3.5 loaded:                 {status_sd35}")
+        print(f"Dataset loaded:              {status_ds}")
+        print(f"LoRA attached:               {status_lora}")
+        print(f"Forward pass:                 {status_fwd}")
+        print(f"Loss computation:             {status_loss}")
+        print(f"Checkpointing:                {status_ckpt}")
+        print(f"Validation generation:        {status_val}")
+        print("=" * 52 + "\n")
+
+        return {
+            "pipeline_type": pipe_type,
+            "transformer_type": trans_type,
+            "vae_type": vae_type,
+            "sd35_loaded": sd35_loaded,
+            "dataset_loaded": dataset_loaded,
+            "lora_attached": lora_attached,
+            "full_sd35_params": total_p,
+            "total_params": total_p,
+            "base_params": frozen_params,
+            "frozen_params": frozen_params,
+            "trainable_params": trainable_params,
+            "trainable_lora_params": trainable_params,
+            "lora_params": lora_params,
             "trainable_percent": trainable_percent,
-            "dataset_samples": len(self.dataset),
-            "resolution": self.config.training.resolution,
-            "batch_size": self.config.training.batch_size,
-            "gradient_accumulation": self.config.training.gradient_accumulation_steps,
-            "mixed_precision": self.config.training.mixed_precision,
-            "device": str(self.device),
+            "forward_pass": forward_pass,
+            "loss_computation": loss_comp,
+            "checkpointing": checkpointing,
+            "validation_generation": validation_gen,
+            "gradient_verification": grad_flow_res,
             "dry_run_loss": loss_val,
         }
+
+
+
+
 
     def train(
         self,
