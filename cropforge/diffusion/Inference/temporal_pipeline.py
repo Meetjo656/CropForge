@@ -103,11 +103,17 @@ class TemporalInferencePipeline:
         condition_encoder: Optional[TemporalConditionEncoder] = None,
         device: Optional[Union[str, torch.device]] = None,
         dtype: Optional[torch.dtype] = None,
+        load_sd35: bool = True,
     ) -> None:
         self.device = device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
         self.dtype = dtype if dtype is not None else (torch.float16 if self.device == "cuda" else torch.float32)
 
-        self.pipe = pipeline if pipeline is not None else load_model(device=self.device, torch_dtype=self.dtype)
+        if pipeline is not None:
+            self.pipe = pipeline
+        elif load_sd35:
+            self.pipe = load_model(device=self.device, torch_dtype=self.dtype)
+        else:
+            self.pipe = None
 
         # Infer dimensions from transformer if available
         transformer = getattr(self.pipe, "transformer", None)
@@ -130,6 +136,7 @@ class TemporalInferencePipeline:
         seed: int = 42,
         num_inference_steps: int = 30,
         guidance_scale: float = 7.5,
+        force_offline: bool = False,
     ) -> Dict[str, Any]:
         """
         Generate a temporal disease forecast image at t_0 + delta_t.
@@ -157,7 +164,7 @@ class TemporalInferencePipeline:
 
         # 2. Run diffusion generation with temporal conditioning
         with torch.inference_mode():
-            if hasattr(self.pipe, "transformer"):
+            if hasattr(self.pipe, "transformer") and not force_offline:
                 # Real SD3.5 model execution with text & condition embedding fusion
                 pipe_kwargs: Dict[str, Any] = {
                     "num_inference_steps": num_inference_steps,

@@ -22,6 +22,7 @@ from cropforge.diffusion.tests.test_sd35_pipeline import TestSD35InferencePipeli
 from cropforge.diffusion.tests.test_logging_and_config import TestLoggingAndConfig
 from cropforge.diffusion.tests.test_lora_training import TestLoRATrainingArchitecture
 from cropforge.diffusion.tests.test_temporal_conditioning import TestTemporalConditioning
+from cropforge.diffusion.tests.test_real_temporal_milestone7 import TestMilestone7RealTemporal
 
 
 
