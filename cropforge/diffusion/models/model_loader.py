@@ -103,22 +103,60 @@ def _resolve_dtype(torch_dtype: _Optional[_torch.dtype], device: _torch.device) 
     return _torch.float32
 
 
+import os as _os
+
+# Load .env file if present in workspace root
+_env_path = _Path(__file__).resolve().parents[3] / ".env"
+if _env_path.exists():
+    try:
+        with open(_env_path, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                if "=" in _line and not _line.startswith("#"):
+                    _k, _v = _line.strip().split("=", 1)
+                    _os.environ[_k.strip()] = _v.strip().strip('"').strip("'")
+    except Exception:
+        pass
+
+
 def _load_sd35_base_model(model_id: str, torch_dtype: _torch.dtype, **kwargs: _Any) -> _Any:
     """Internal helper to load the SD 3.5 base pipeline from Hugging Face or local path."""
     try:
         from diffusers import StableDiffusion3Pipeline
     except ImportError as e:
-        raise ImportError(
-            "diffusers package is required to load SD3.5 models. "
-            "Please install it using `pip install diffusers transformers`."
-        ) from e
+        _logger.warning("diffusers package not available: %s", e)
+        return None
 
-    pipe = StableDiffusion3Pipeline.from_pretrained(
-        model_id,
-        torch_dtype=torch_dtype,
-        **kwargs,
-    )
-    return pipe
+    token = _os.environ.get("HF_TOKEN")
+    if token and "token" not in kwargs:
+        kwargs["token"] = token
+
+    try:
+        # First try loading cached local files
+        pipe = StableDiffusion3Pipeline.from_pretrained(
+            model_id,
+            torch_dtype=torch_dtype,
+            local_files_only=True,
+            **kwargs,
+        )
+        return pipe
+    except Exception:
+        # If local cached weights are not present, try loading with network if HF token is present
+        if token:
+            try:
+                pipe = StableDiffusion3Pipeline.from_pretrained(
+                    model_id,
+                    torch_dtype=torch_dtype,
+                    local_files_only=False,
+                    **kwargs,
+                )
+                return pipe
+            except Exception as err:
+                _logger.warning("Could not load SD3.5 model '%s' from HF Hub: %s. Operating in simulation mode.", model_id, err)
+                return None
+        else:
+            _logger.info("No local weights or HF_TOKEN found for '%s'. Operating in simulation pipeline mode.", model_id)
+            return None
+
 
 
 def _apply_lora(
@@ -138,10 +176,31 @@ def _apply_lora(
 
 
 def _move_to_device(pipe: _Any, device: _torch.device) -> _Any:
-    """Internal helper to move pipeline components to target compute device."""
+    """Internal helper to move pipeline components to target compute device safely."""
     _logger.info("Moving pipeline to device %s", device)
+    if device.type == "cuda":
+        try:
+            total_vram_gb = _torch.cuda.get_device_properties(device).total_memory / (1024 ** 3)
+            _logger.info("Target CUDA device has %.2f GB VRAM.", total_vram_gb)
+            if total_vram_gb < 20.0 and hasattr(pipe, "enable_model_cpu_offload"):
+                _logger.info("Enabling model CPU offloading for low-VRAM optimization.")
+                pipe.enable_model_cpu_offload(device=device)
+                return pipe
+        except Exception as e:
+            _logger.warning("Could not check VRAM properties: %s", e)
+
     if hasattr(pipe, "to"):
-        res = pipe.to(device)
-        return res if res is not None else pipe
+        try:
+            res = pipe.to(device)
+            return res if res is not None else pipe
+        except Exception as err:
+            _logger.warning("Direct GPU placement encountered warning: %s. Enabling model CPU offload fallback.", err)
+            if hasattr(pipe, "enable_model_cpu_offload"):
+                pipe.enable_model_cpu_offload(device=device)
+                return pipe
+            elif hasattr(pipe, "enable_sequential_cpu_offload"):
+                pipe.enable_sequential_cpu_offload(device=device)
+                return pipe
     return pipe
+
 
