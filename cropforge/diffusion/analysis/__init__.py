@@ -13,6 +13,7 @@ from cropforge.diffusion.analysis.spatial_grid_generator import create_isolated_
 from cropforge.diffusion.analysis.temporal_horizon_forecaster import RecursiveSpatialForecaster
 from cropforge.diffusion.analysis.gt_mask_synthesizer import GTMaskConditionedSynthesizer
 from cropforge.diffusion.analysis.spatial_conditioning_engine import SpatialConditioningSynthesizer
+from cropforge.diffusion.analysis.rgb_data_path_audit import audit_rgb_data_paths
 
 __all__ = [
     "ForecastingFailureAnalyzer",
@@ -24,4 +25,5 @@ __all__ = [
     "RecursiveSpatialForecaster",
     "GTMaskConditionedSynthesizer",
     "SpatialConditioningSynthesizer",
+    "audit_rgb_data_paths",
 ]

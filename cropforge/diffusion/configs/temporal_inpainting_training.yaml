@@ -1,0 +1,46 @@
+# Temporal Inpainting Training Configuration for CropForge Milestone 15
+
+model:
+  pretrained_model_name_or_path: "stabilityai/stable-diffusion-3.5-medium"
+  existing_lora_path: "cropforge/diffusion/checkpoints/sd35_cropforge_lora.safetensors"
+
+dataset:
+  root: "outputs/datasets/real_temporal_inpainting"
+  train_manifest: "outputs/datasets/real_temporal_inpainting/train_manifest.json"
+  validation_manifest: "outputs/datasets/real_temporal_inpainting/val_manifest.json"
+  test_manifest: "outputs/datasets/real_temporal_inpainting/test_manifest.json"
+
+training:
+  resolution: 512
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  max_train_steps: 50
+  mixed_precision: "fp16"
+  gradient_checkpointing: true
+  seed: 42
+
+optimizer:
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-2
+
+lora:
+  rank: 16
+  alpha: 32
+  dropout: 0.05
+
+loss:
+  diffusion_weight: 1.0
+  identity_weight: 0.5
+  mask_region_weight: 1.0
+  reconstruction_weight: 0.5
+
+validation:
+  every_n_steps: 10
+  num_samples: 5
+  horizons: [3, 7, 14]
+  seed: 42
+
+checkpointing:
+  output_dir: "outputs/diffusion/temporal_inpainting"
+  save_every_n_steps: 25
+  max_checkpoints: 3
