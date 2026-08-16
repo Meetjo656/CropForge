@@ -29,6 +29,7 @@ from cropforge.diffusion.tests.test_milestone10_spatial_mask import TestMileston
 from cropforge.diffusion.tests.test_milestone11_isolated_spatial import TestMilestone11IsolatedSpatial
 from cropforge.diffusion.tests.test_milestone12_horizon_modeling import TestMilestone12HorizonModeling
 from cropforge.diffusion.tests.test_milestone13_gt_synthesis import TestMilestone13GTSynthesis
+from cropforge.diffusion.tests.test_milestone14_spatial_conditioning import TestMilestone14SpatialConditioning
 
 
 

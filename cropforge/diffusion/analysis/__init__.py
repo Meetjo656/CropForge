@@ -12,6 +12,7 @@ from cropforge.diffusion.analysis.isolated_spatial_evaluator import IsolatedSpat
 from cropforge.diffusion.analysis.spatial_grid_generator import create_isolated_mask_grid
 from cropforge.diffusion.analysis.temporal_horizon_forecaster import RecursiveSpatialForecaster
 from cropforge.diffusion.analysis.gt_mask_synthesizer import GTMaskConditionedSynthesizer
+from cropforge.diffusion.analysis.spatial_conditioning_engine import SpatialConditioningSynthesizer
 
 __all__ = [
     "ForecastingFailureAnalyzer",
@@ -22,4 +23,5 @@ __all__ = [
     "create_isolated_mask_grid",
     "RecursiveSpatialForecaster",
     "GTMaskConditionedSynthesizer",
+    "SpatialConditioningSynthesizer",
 ]
