@@ -23,6 +23,12 @@ from cropforge.diffusion.tests.test_logging_and_config import TestLoggingAndConf
 from cropforge.diffusion.tests.test_lora_training import TestLoRATrainingArchitecture
 from cropforge.diffusion.tests.test_temporal_conditioning import TestTemporalConditioning
 from cropforge.diffusion.tests.test_real_temporal_milestone7 import TestMilestone7RealTemporal
+from cropforge.diffusion.tests.test_milestone8_lesion_aware import TestMilestone8LesionAware
+from cropforge.diffusion.tests.test_milestone9_ablation import TestMilestone9Ablation
+from cropforge.diffusion.tests.test_milestone10_spatial_mask import TestMilestone10SpatialMask
+from cropforge.diffusion.tests.test_milestone11_isolated_spatial import TestMilestone11IsolatedSpatial
+from cropforge.diffusion.tests.test_milestone12_horizon_modeling import TestMilestone12HorizonModeling
+from cropforge.diffusion.tests.test_milestone13_gt_synthesis import TestMilestone13GTSynthesis
 
 
 
